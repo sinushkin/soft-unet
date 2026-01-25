@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::types::{Contour, ContoursStruct, Image, Point};
+use crate::types::{Contour, ContoursStruct, Image, SuPoint};
 use anyhow::{Result, bail};
 use base64::Engine;
 use opencv::imgcodecs;
@@ -11,12 +11,13 @@ use base64::engine::general_purpose::STANDARD;
 const OUTER_LABEL: &str = "outer";
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LabelMeLite {
     pub shapes: Vec<ShapeLite>,
-    pub imagePath: Option<String>,
-    pub imageData: Option<String>,
-    pub imageHeight: i32,
-    pub imageWidth: i32,
+    pub image_path: Option<String>,
+    pub image_data: Option<String>,
+    pub image_height: i32,
+    pub image_width: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,10 +25,10 @@ struct ShapeLite {
     pub label: String,
 
     #[serde(deserialize_with = "de_points")]
-    pub points: Vec<Point>,
+    pub points: Vec<SuPoint>,
 }
 
-fn de_points<'de, D>(deserializer: D) -> Result<Vec<Point>, D::Error>
+fn de_points<'de, D>(deserializer: D) -> Result<Vec<SuPoint>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -35,7 +36,7 @@ where
 
     Ok(raw
         .into_iter()
-        .map(|[x, y]| Point {
+        .map(|[x, y]| SuPoint {
             x: x as f32,
             y: y as f32,
         })
@@ -53,7 +54,7 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
 
     let original: Result<Mat> = {
         // ---- case base64 imageData ----
-        if let Some(ref b64) = labelme.imageData {
+        if let Some(ref b64) = labelme.image_data {
             let bytes = STANDARD.decode(b64)?;
 
             let buf = Mat::from_slice(&bytes)?;
@@ -66,7 +67,7 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
             Ok(mat)
         }
         // ---- case imagePath ----
-        else if let Some(ref image_path) = labelme.imagePath {
+        else if let Some(ref image_path) = labelme.image_path {
             if let Some(json_dir) = json_path.parent() {
                 let full = json_dir.join(image_path.clone());
 
@@ -84,14 +85,14 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
         }
     };
     let original = original?;
-    assert_eq!(original.cols(), labelme.imageWidth);
-    assert_eq!(original.rows(), labelme.imageHeight);
+    assert_eq!(original.cols(), labelme.image_width);
+    assert_eq!(original.rows(), labelme.image_height);
     assert!(original.cols()>0);
     assert!(original.rows()>0);
     Ok(Image{
         original,
-        width: labelme.imageWidth as usize,
-        height: labelme.imageHeight as usize,
+        width: labelme.image_width as usize,
+        height: labelme.image_height as usize,
         contours: build_contours(labelme.shapes)?,
     })
 }
