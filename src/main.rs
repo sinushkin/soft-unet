@@ -19,6 +19,7 @@ mod preprocess;
 mod spline;
 mod split;
 mod types;
+mod postprocess;
 
 fn main() -> Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
@@ -93,17 +94,19 @@ fn list_jsons(dir: PathBuf) -> Result<Vec<PathBuf>> {
 
 fn save_to_disk(rx: Receiver<SaveFileTask>) -> Result<()> {
     let out_dir = Path::new("out");
+    fs::create_dir_all(out_dir)?;
     while let Ok(task) = rx.recv() {
         let postfix = task
             .tensor_idx
             .map(|idx| format!("_{}", idx))
             .unwrap_or_default();
+        let resized = postprocess::resize(&task.mat)?;
         imgcodecs::imwrite(
             out_dir
                 .join(format!("{}{}.png", task.prefix, postfix))
                 .to_str()
                 .unwrap(),
-            &task.mat,
+            &resized,
             &Vector::new(),
         )?;
     }

@@ -49,7 +49,7 @@ pub struct SuPoint2F {
 }
 
 impl SuPoint2F {
-    #[warn(unused)]
+    #[allow(unused)]
     pub(crate) fn new(x: i32, y: i32) -> Self {
         SuPoint2F { x: x as f32, y: y as f32}
     }
