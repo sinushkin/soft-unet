@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::types::{Contour, ContoursStruct, Image, SuPoint};
+use crate::types::{Contour, ContoursStruct, Image, RectSize, SuPoint, OUTER_LABEL};
 use anyhow::{Result, bail};
 use base64::Engine;
 use opencv::imgcodecs;
@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 use base64::engine::general_purpose::STANDARD;
 
-const OUTER_LABEL: &str = "outer";
+
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,8 +91,7 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
     assert!(original.rows()>0);
     Ok(Image{
         original,
-        width: labelme.image_width as usize,
-        height: labelme.image_height as usize,
+        size: RectSize::new(labelme.image_width as usize, labelme.image_height as usize),
         contours: build_contours(labelme.shapes)?,
     })
 }
@@ -100,7 +99,7 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
 
 fn build_contours(shapes: Vec<ShapeLite>) -> Result<Vec<ContoursStruct>> {
     // group by index postfix
-    let mut map: HashMap<i32, (Option<Contour>, Vec<Contour>)> = HashMap::new();
+    let mut map: HashMap<usize, (Option<Contour>, Vec<Contour>)> = HashMap::new();
 
     for shape in shapes {
         let (outer, idx) = parse_label(&shape.label)?;
@@ -135,20 +134,13 @@ fn build_contours(shapes: Vec<ShapeLite>) -> Result<Vec<ContoursStruct>> {
 
 
 
-fn parse_label(label: &str) -> Result<(bool, i32)> {
-    // split once at '_'
+fn parse_label(label: &str) -> Result<(bool, usize)> {
+    // split once at '_'. outer_1 -> (outer, 1)
     let mut it = label.splitn(2, '_');
-
-    let kind = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
+    let label = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
     let num  = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
 
-    let idx: i32 = num.parse()?;
-    let outer = match kind {
-        OUTER_LABEL => true,
-        _ => false
-    };
-
-    Ok((outer, idx))
+    Ok((OUTER_LABEL == label, num.parse()?))
 }
 
 #[cfg(test)]
@@ -159,8 +151,8 @@ mod tests {
         let json_path = PathBuf::from("test-resources/IMG_20260123_232343.json");
         let image = load_labelme(&json_path)?;
         assert_eq!(6, image.contours.len());
-        assert_eq!(725, image.width);
-        assert_eq!(386, image.height);
+        assert_eq!(725, image.size.width);
+        assert_eq!(386, image.size.height);
         Ok(())
     }
 }
