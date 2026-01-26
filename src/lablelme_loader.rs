@@ -93,7 +93,7 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
     Ok(Image{
         original,
         size,
-        contours: build_contours(size, labelme.shapes)?,
+        contour_crops: build_contours(size, labelme.shapes)?,
     })
 }
 
@@ -159,6 +159,7 @@ fn build_contours(
             .collect();
 
         let group = ContourGroup {
+            idx,
             outer: shifted_outer,
             inners: shifted_inners,
         };
@@ -166,7 +167,7 @@ fn build_contours(
         result.push(ContourCrop {
             offset,
             size: RectSize { width, height },
-            contours: group,
+            contour_group: group
         });
     }
 
@@ -222,7 +223,7 @@ mod tests {
     fn load_test() -> Result<()> {
         let json_path = PathBuf::from("test-resources/IMG_20260123_232343.json");
         let image = load_labelme(&json_path)?;
-        assert_eq!(6, image.contours.len());
+        assert_eq!(6, image.contour_crops.len());
         assert_eq!(725, image.size.width);
         assert_eq!(386, image.size.height);
         Ok(())

@@ -1,3 +1,5 @@
+/// Скругление контура
+
 use crate::types::SuPoint2F;
 
 pub fn smooth_polygon(points: &[SuPoint2F], smooth_factor: usize) -> Vec<SuPoint2F> {

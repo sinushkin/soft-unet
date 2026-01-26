@@ -10,13 +10,13 @@ pub const INNER_LABEL: &str = "inner";
 pub struct Image {
     pub original: Mat,
     pub size: RectSize,
-    pub contours: Vec<ContourCrop>,
+    pub contour_crops: Vec<ContourCrop>,
 }
 
 pub struct ContourCrop {
     pub offset: SuPoint,
     pub size: RectSize,
-    pub contours: ContourGroup
+    pub contour_group: ContourGroup
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -31,6 +31,7 @@ pub struct Contour {
 }
 
 pub struct ContourGroup {
+    pub idx: usize,
     pub outer: Contour,
     pub inners: Vec<Contour>,
 }

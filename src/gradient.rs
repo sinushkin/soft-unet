@@ -1,10 +1,7 @@
-use crate::types::{Contour, ContourGroup, INNER_LABEL, Image, RectSize, su_points_to_cv_points, ContourCrop};
-/// https://www.youtube.com/watch?v=oxWfLTQoC5A
-/// https://www.youtube.com/watch?v=_3S3eTvBEns
-///
+use crate::types::{ContourGroup, INNER_LABEL, RectSize, su_points_to_cv_points, ContourCrop};
 use anyhow::Result;
-use opencv::core::{CV_8U, CV_8UC1, CV_32FC1, NORM_MINMAX, Point, Rect, Scalar, Vector, bitwise_and, bitwise_not, no_array, normalize, bitwise_or};
-use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
+use opencv::core::{CV_8U, CV_8UC1, NORM_MINMAX, Point, Scalar, Vector, bitwise_and, bitwise_not, no_array, normalize, bitwise_or};
+use opencv::prelude::{Mat, MatExprTraitConst};
 use opencv::{imgcodecs, imgproc};
 use std::path::Path;
 use log::Level;
@@ -12,7 +9,7 @@ use log::Level;
 
 pub fn build_gradient_mask(contour_crop: &ContourCrop) -> Result<Mat> {
     let (outer_mask, inner_mask) =
-        build_outer_inner_masks(&contour_crop.contours, &contour_crop.size)?;
+        build_outer_inner_masks(&contour_crop.contour_group, &contour_crop.size)?;
     let result = build_gradient(&outer_mask, &inner_mask)?;
     Ok(result)
 }
@@ -148,9 +145,9 @@ mod tests {
 
         let json_path = PathBuf::from("test-resources/IMG_20260123_232343.json");
         let image = load_labelme(&json_path)?;
-        let some_group_crop = image.contours.get(0).unwrap();
+        let some_group_crop = image.contour_crops.get(0).unwrap();
         let (outer_mask, inner_mask) =
-            build_outer_inner_masks(&some_group_crop.contours, &some_group_crop.size)?;
+            build_outer_inner_masks(&some_group_crop.contour_group, &some_group_crop.size)?;
         imgcodecs::imwrite(
             out_dir.join("outer_mask.png").to_str().unwrap(),
             &outer_mask,
