@@ -90,10 +90,16 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
     assert!(original.cols()>0);
     assert!(original.rows()>0);
     let size = RectSize::new(labelme.image_width as usize, labelme.image_height as usize);
+    let contour_crops = match build_contours(size, labelme.shapes) {
+        Ok(crops) => crops,
+        Err(e) => {
+            bail!("Failed to build contours for file {:?} {:?}", json_path, e)
+        }
+    };
     Ok(Image{
         original,
         size,
-        contour_crops: build_contours(size, labelme.shapes)?,
+        contour_crops,
     })
 }
 

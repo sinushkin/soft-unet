@@ -127,7 +127,7 @@ mod tests {
     use crate::lablelme_loader::load_labelme;
     use anyhow::Result;
     use opencv::core::Vector;
-    use opencv::{imgcodecs, imgproc};
+    use opencv::{imgcodecs};
     use std::fs::create_dir_all;
     use std::path::{Path, PathBuf};
     use env_logger::Builder;

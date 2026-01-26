@@ -60,6 +60,7 @@ mod tests {
     use opencv::{imgcodecs, imgproc};
     use opencv::prelude::{Mat, MatExprTraitConst};
     use anyhow::Result;
+    use log::Level;
     use opencv::core::{Point, Scalar};
     use opencv::core::Vector;
     use super::*;
@@ -134,10 +135,11 @@ mod tests {
 
         let out_dir = Path::new("out");
         create_dir_all(out_dir)?;
-        // 7️⃣ Save
-        let out_path = out_dir.join("smooth.png");
-        imgcodecs::imwrite(out_path.to_str().unwrap(), &canvas, &Vector::new())?;
-
+        if log::log_enabled!(Level::Trace) {
+            // 7️⃣ Save
+            let out_path = out_dir.join("smooth.png");
+            imgcodecs::imwrite(out_path.to_str().unwrap(), &canvas, &Vector::new())?;
+        }
         Ok(())
     }
 }

@@ -1,37 +1,134 @@
-use std::path::{Path, PathBuf};
-use anyhow::Result;
-use log::error;
+use crate::lablelme_loader::load_labelme;
+use crate::pipeline::SaveFileTask;
+use anyhow::{Result, anyhow, bail};
+use crossbeam_channel::{Receiver, bounded};
+use env_logger::Builder;
+use log::{LevelFilter, error, info};
 use opencv::core::Vector;
 use opencv::imgcodecs;
-use rayon::spawn;
+use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::{env, fs, thread};
+use std::thread::JoinHandle;
 
-mod types;
-mod lablelme_loader;
-mod spline;
 mod gradient;
-mod preprocess;
+mod lablelme_loader;
 mod pipeline;
+mod preprocess;
+mod spline;
 mod split;
+mod types;
 
-fn main() -> Result<()>{
-    let path_buf = PathBuf::from("test-resources/IMG_20260123_232343.json");
-    let image = lablelme_loader::load_labelme(&path_buf)?;
-    let (tx, rx) = std::sync::mpsc::channel();
-    spawn(|| {
-        if let Err(e) = pipeline::run(image, "test".to_string(), tx) {
-            error!("Error {:?}", e);
-        }
+fn main() -> Result<()> {
+    Builder::new().filter_level(LevelFilter::Info).init();
+
+    // --- parse CLI
+    let dir = env::args()
+        .nth(1)
+        .ok_or_else(|| anyhow!("Usage: ./soft-unet <path-to-dir-with-jsons>"))?;
+
+    let dir = PathBuf::from(dir);
+    let jsons = list_jsons(dir)?;
+
+    // --- rayon pool
+    let cpu = 1.max(num_cpus::get()-1);
+    info!("Using {} cpu", cpu);
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(cpu)
+        .build()?;
+
+    // --- bounded channel for results
+    let queue_limit = cpu * 3 / 2;
+    let (tx, rx) = bounded(queue_limit);
+
+    // --- processing
+    let background_start_result =  pool.install(|| -> Result<JoinHandle<Result<()>>> {
+        let background_join_handle = thread::spawn(move || {
+        jsons.par_iter().try_for_each(|path| -> Result<()> {
+            let file_name = path.file_stem().unwrap().to_string_lossy().to_string();
+            let image = load_labelme(&path)?;
+            if let Err(e) = pipeline::run(image, file_name, tx.clone()) {
+                error!("Pipeline Failed for {}: {:?}", path.display(), e);
+            }
+            Ok(())
+        })});
+        //background.join().map_err(|_| anyhow!("Background thread failed"))??;
+        Ok(background_join_handle)
     });
 
+    match background_start_result {
+        Ok(join_handle) => {
+            info!("Background thread started");
+            let store_join_handle = thread::spawn( move || {
+                if let Err(e) = save_to_disk(rx){
+                    error!("Failed to save to disk: {:?}", e);
+                }
+            });
+            join_handle.join().map_err(|_| anyhow!("Background thread failed"))??;
+            store_join_handle.join().map_err(|_| anyhow!("Storing files thread failed"))?;
+        },
+        Err(e) => bail!("Failed to start background thread: {:?}", e),
+    }
+
+    Ok(())
+}
+
+fn list_jsons(dir: PathBuf) -> Result<Vec<PathBuf>> {
+    if !dir.is_dir() {
+        bail!("{} is not a directory", dir.display());
+    }
+
+    // --- collect json files
+    let mut files: Vec<PathBuf> = fs::read_dir(&dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "json").unwrap_or(false))
+        .collect();
+    files.sort(); // deterministic order
+
+    info!("Found {} json files", files.len());
+    Ok(files)
+}
+
+fn save_to_disk(rx: Receiver<SaveFileTask>) -> Result<()> {
     let out_dir = Path::new("out");
     while let Ok(task) = rx.recv() {
-        let postfix = task.tensor_idx.map(|idx| format!("_{}", idx)).unwrap_or_default();
+        let postfix = task
+            .tensor_idx
+            .map(|idx| format!("_{}", idx))
+            .unwrap_or_default();
         imgcodecs::imwrite(
-            out_dir.join(format!("{}{}.png", task.prefix, postfix)).to_str().unwrap(),
+            out_dir
+                .join(format!("{}{}.png", task.prefix, postfix))
+                .to_str()
+                .unwrap(),
             &task.mat,
             &Vector::new(),
         )?;
     }
-
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lablelme_loader::load_labelme;
+    use anyhow::Result;
+    use std::path::PathBuf;
+
+    #[test]
+    #[ignore]
+    fn single_file_test() -> Result<()> {
+        let path_buf = PathBuf::from("test-resources/IMG_20260123_232343.json");
+        let image = load_labelme(&path_buf)?;
+        let (tx, rx) = bounded(1);
+        rayon::spawn(|| {
+            if let Err(e) = pipeline::run(image, "test".to_string(), tx) {
+                error!("Error {:?}", e);
+            }
+        });
+        save_to_disk(rx)?;
+        Ok(())
+    }
 }

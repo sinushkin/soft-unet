@@ -5,7 +5,7 @@ use crate::types::{ContourCrop, Image, RectSize};
 use anyhow::{anyhow, bail, Result};
 use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
+use crossbeam_channel::Sender;
 use opencv::core::{Rect, CV_8UC1};
 
 /// Для буферизирования результатов, только один поток будет писать на диск
