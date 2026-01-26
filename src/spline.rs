@@ -1,6 +1,6 @@
-use crate::types::SuPoint;
+use crate::types::SuPoint2F;
 
-pub fn smooth_polygon(points: &[SuPoint], smooth_factor: usize) -> Vec<SuPoint> {
+pub fn smooth_polygon(points: &[SuPoint2F], smooth_factor: usize) -> Vec<SuPoint2F> {
     if points.len() < 4 {
         return points.to_vec();
     }
@@ -27,7 +27,7 @@ pub fn smooth_polygon(points: &[SuPoint], smooth_factor: usize) -> Vec<SuPoint> 
             let x = catmull_rom(p0.x as f32, p1.x as f32, p2.x as f32, p3.x as f32, t);
             let y = catmull_rom(p0.y as f32, p1.y as f32, p2.y as f32, p3.y as f32, t);
 
-            out.push(SuPoint {
+            out.push(SuPoint2F {
                 x,
                 y,
             });
@@ -69,10 +69,10 @@ mod tests {
         let side = 100.0;
 
         // генерируем вершины шестиугольника
-        let hexagon: Vec<SuPoint> = (0..6)
+        let hexagon: Vec<SuPoint2F> = (0..6)
             .map(|i| {
                 let angle = std::f32::consts::PI / 3.0 * i as f32;
-                SuPoint::new(
+                SuPoint2F::new(
                     (cx/2f32 + side * angle.cos()) as i32,
                     (cy/2f32 + side * angle.sin()) as i32,
                 )

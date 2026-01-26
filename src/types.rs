@@ -10,9 +10,16 @@ pub const INNER_LABEL: &str = "inner";
 pub struct Image {
     pub original: Mat,
     pub size: RectSize,
-    pub contours: Vec<ContoursStruct>,
+    pub contours: Vec<ContourCrop>,
 }
 
+pub struct ContourCrop {
+    pub offset: SuPoint,
+    pub size: RectSize,
+    pub contours: ContourGroup
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct RectSize {
     pub width: usize,
     pub height: usize,
@@ -20,49 +27,55 @@ pub struct RectSize {
 
 pub struct Contour {
     pub label: String,
-    pub points: Vec<SuPoint>,
+    pub points: Vec<SuPoint2F>,
 }
 
-pub struct ContoursStruct {
+pub struct ContourGroup {
     pub outer: Contour,
     pub inners: Vec<Contour>,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone)]
 pub struct SuPoint {
+    pub x: usize,
+    pub y: usize,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct SuPoint2F {
     pub x: f32,
     pub y: f32,
 }
 
-impl SuPoint {
+impl SuPoint2F {
     pub(crate) fn new(x: i32, y: i32) -> Self {
-        SuPoint{ x: x as f32, y: y as f32}
+        SuPoint2F { x: x as f32, y: y as f32}
     }
 }
 
-impl From<SuPoint> for Point {
-    fn from(value: SuPoint) -> Self {
+impl From<SuPoint2F> for Point {
+    fn from(value: SuPoint2F) -> Self {
         Point::new(value.x.round() as i32, value.y.round() as i32)
     }
 }
-impl From<&SuPoint> for Point {
-    fn from(value: &SuPoint) -> Self {
+impl From<&SuPoint2F> for Point {
+    fn from(value: &SuPoint2F) -> Self {
         Point::new(value.x.round() as i32, value.y.round() as i32)
     }
 }
 
-impl From<SuPoint> for Point2f {
-    fn from(value: SuPoint) -> Self {
+impl From<SuPoint2F> for Point2f {
+    fn from(value: SuPoint2F) -> Self {
         Point2f::new(value.x, value.y)
     }
 }
-impl From<&SuPoint> for Point2f {
-    fn from(value: &SuPoint) -> Self {
+impl From<&SuPoint2F> for Point2f {
+    fn from(value: &SuPoint2F) -> Self {
         Point2f::new(value.x, value.y)
     }
 }
 
-pub fn su_points_to_cv_points(pts: &[SuPoint]) -> Vector<Point> {
+pub fn su_points_to_cv_points(pts: &[SuPoint2F]) -> Vector<Point> {
     let mut result = Vector::<Point>::new();
     pts.iter().for_each(|p| result.push(p.into()));
     result

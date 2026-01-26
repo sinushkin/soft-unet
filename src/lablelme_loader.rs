@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::types::{Contour, ContoursStruct, Image, RectSize, SuPoint, OUTER_LABEL};
-use anyhow::{Result, bail};
+use crate::types::{Contour, ContourCrop, ContourGroup, Image, RectSize, SuPoint, SuPoint2F, OUTER_LABEL};
+use anyhow::{Result, bail, anyhow};
 use base64::Engine;
 use opencv::imgcodecs;
 use opencv::prelude::*;
@@ -25,10 +25,10 @@ struct ShapeLite {
     pub label: String,
 
     #[serde(deserialize_with = "de_points")]
-    pub points: Vec<SuPoint>,
+    pub points: Vec<SuPoint2F>,
 }
 
-fn de_points<'de, D>(deserializer: D) -> Result<Vec<SuPoint>, D::Error>
+fn de_points<'de, D>(deserializer: D) -> Result<Vec<SuPoint2F>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -36,7 +36,7 @@ where
 
     Ok(raw
         .into_iter()
-        .map(|[x, y]| SuPoint {
+        .map(|[x, y]| SuPoint2F {
             x: x as f32,
             y: y as f32,
         })
@@ -89,43 +89,84 @@ pub fn load_labelme(json_path: &PathBuf) -> Result<Image> {
     assert_eq!(original.rows(), labelme.image_height);
     assert!(original.cols()>0);
     assert!(original.rows()>0);
+    let size = RectSize::new(labelme.image_width as usize, labelme.image_height as usize);
     Ok(Image{
         original,
-        size: RectSize::new(labelme.image_width as usize, labelme.image_height as usize),
-        contours: build_contours(labelme.shapes)?,
+        size,
+        contours: build_contours(size, labelme.shapes)?,
     })
 }
 
 
-fn build_contours(shapes: Vec<ShapeLite>) -> Result<Vec<ContoursStruct>> {
-    // group by index postfix
+fn build_contours(
+    original_size: RectSize,
+    shapes: Vec<ShapeLite>
+) -> Result<Vec<ContourCrop>> {
+
     let mut map: HashMap<usize, (Option<Contour>, Vec<Contour>)> = HashMap::new();
 
     for shape in shapes {
-        let (outer, idx) = parse_label(&shape.label)?;
+        let (is_outer, idx) = parse_label(&shape.label)?;
         let entry = map.entry(idx).or_insert((None, Vec::new()));
-        match outer {
-            true => {
-                if entry.0.is_some() {
-                    bail!("Duplicate outer contour for index {}", idx);
-                }
-                entry.0 = Some(Contour{ label: shape.label, points: shape.points});
+
+        let contour = Contour {
+            label: shape.label,
+            points: shape.points,
+        };
+
+        if is_outer {
+            if entry.0.is_some() {
+                bail!("Duplicate outer contour for index {}", idx);
             }
-            false => {
-                entry.1.push(Contour{ label: shape.label, points: shape.points});
-            }
+            entry.0 = Some(contour);
+        } else {
+            entry.1.push(contour);
         }
     }
 
-    // build final vector
     let mut result = Vec::with_capacity(map.len());
 
     for (idx, (outer_opt, inners)) in map {
+
         let outer = outer_opt
-            .ok_or_else(|| anyhow::anyhow!("Missing outer contour for index {}", idx))?;
-        result.push(ContoursStruct {
-            outer,
-            inners,
+            .ok_or_else(|| anyhow!("Missing outer contour for index {}", idx))?;
+
+        // --- compute bounding box (based on outer)
+
+        let (min_x, min_y, max_x, max_y) = contour_bbox(&outer.points);
+
+        // clamp to image (optional safety)
+        let min_x = min_x.max(0);
+        let min_y = min_y.max(0);
+
+        let max_x = max_x.min(original_size.width as i32 - 1);
+        let max_y = max_y.min(original_size.height as i32 - 1);
+
+        let width  = (max_x - min_x + 1) as usize;
+        let height = (max_y - min_y + 1) as usize;
+
+        let offset = SuPoint {
+            x: min_x as usize,
+            y: min_y as usize,
+        };
+
+        // --- shift contours into crop coordinates
+
+        let shifted_outer = shift_contour(&outer, min_x, min_y);
+
+        let shifted_inners = inners.iter()
+            .map(|c| shift_contour(c, min_x, min_y))
+            .collect();
+
+        let group = ContourGroup {
+            outer: shifted_outer,
+            inners: shifted_inners,
+        };
+
+        result.push(ContourCrop {
+            offset,
+            size: RectSize { width, height },
+            contours: group,
         });
     }
 
@@ -141,6 +182,37 @@ fn parse_label(label: &str) -> Result<(bool, usize)> {
     let num  = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
 
     Ok((OUTER_LABEL == label, num.parse()?))
+}
+
+fn contour_bbox(points: &[SuPoint2F]) -> (i32, i32, i32, i32) {
+    let mut min_x = i32::MAX;
+    let mut min_y = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut max_y = i32::MIN;
+
+    for p in points {
+        let x = p.x as i32;
+        let y = p.y as i32;
+
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+
+    (min_x, min_y, max_x, max_y)
+}
+
+fn shift_contour(contour: &Contour, dx: i32, dy: i32) -> Contour {
+    Contour {
+        label: contour.label.clone(),
+        points: contour.points.iter()
+            .map(|p| SuPoint2F {
+                x: p.x - dx as f32,
+                y: p.y - dy as f32,
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]
