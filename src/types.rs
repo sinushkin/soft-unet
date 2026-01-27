@@ -4,8 +4,6 @@ use opencv::{
 use opencv::core::{Point, Vector};
 use serde::{Deserialize, Serialize};
 
-pub const OUTER_LABEL: &str = "outer";
-pub const INNER_LABEL: &str = "inner";
 
 pub struct Image {
     pub original: Mat,
@@ -27,6 +25,7 @@ pub struct RectSize {
 
 pub struct Contour {
     pub label: String,
+    pub label_prefix: String,
     pub points: Vec<SuPoint2F>,
 }
 

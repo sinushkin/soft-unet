@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::types::{Contour, ContourCrop, ContourGroup, Image, RectSize, SuPoint, SuPoint2F, OUTER_LABEL};
+use crate::types::{Contour, ContourCrop, ContourGroup, Image, RectSize, SuPoint, SuPoint2F};
 use anyhow::{Result, bail, anyhow};
 use base64::Engine;
 use opencv::imgcodecs;
@@ -7,8 +7,7 @@ use opencv::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 use base64::engine::general_purpose::STANDARD;
-
-
+use crate::configuration::OUTER_LABEL;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,11 +111,12 @@ fn build_contours(
     let mut map: HashMap<usize, (Option<Contour>, Vec<Contour>)> = HashMap::new();
 
     for shape in shapes {
-        let (is_outer, idx) = parse_label(&shape.label)?;
+        let (is_outer, prefix, idx) = parse_label(&shape.label)?;
         let entry = map.entry(idx).or_insert((None, Vec::new()));
 
         let contour = Contour {
             label: shape.label,
+            label_prefix: prefix,
             points: shape.points,
         };
 
@@ -158,9 +158,9 @@ fn build_contours(
 
         // --- shift contours into crop coordinates
 
-        let shifted_outer = shift_contour(&outer, min_x, min_y);
+        let shifted_outer = shift_contour(outer, min_x, min_y);
 
-        let shifted_inners = inners.iter()
+        let shifted_inners = inners.into_iter()
             .map(|c| shift_contour(c, min_x, min_y))
             .collect();
 
@@ -182,13 +182,13 @@ fn build_contours(
 
 
 
-fn parse_label(label: &str) -> Result<(bool, usize)> {
+fn parse_label(label: &str) -> Result<(bool, String, usize)> {
     // split once at '_'. outer_1 -> (outer, 1)
     let mut it = label.splitn(2, '_');
     let label = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
     let num  = it.next().ok_or_else(|| anyhow::anyhow!("Bad label"))?;
 
-    Ok((OUTER_LABEL == label, num.parse()?))
+    Ok((OUTER_LABEL == label, label.to_string(), num.parse()?))
 }
 
 fn contour_bbox(points: &[SuPoint2F]) -> (i32, i32, i32, i32) {
@@ -210,9 +210,10 @@ fn contour_bbox(points: &[SuPoint2F]) -> (i32, i32, i32, i32) {
     (min_x, min_y, max_x, max_y)
 }
 
-fn shift_contour(contour: &Contour, dx: i32, dy: i32) -> Contour {
+fn shift_contour(contour: Contour, dx: i32, dy: i32) -> Contour {
     Contour {
-        label: contour.label.clone(),
+        label: contour.label,
+        label_prefix: contour.label_prefix,
         points: contour.points.iter()
             .map(|p| SuPoint2F {
                 x: p.x - dx as f32,

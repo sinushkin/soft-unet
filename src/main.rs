@@ -1,5 +1,5 @@
 use crate::lablelme_loader::load_labelme;
-use crate::pipeline::SaveFileTask;
+use crate::pipeline::{PipelineTask, PipelineTaskResult};
 use anyhow::{Result, anyhow, bail};
 use crossbeam_channel::{Receiver, bounded};
 use env_logger::Builder;
@@ -20,9 +20,11 @@ mod spline;
 mod split;
 mod types;
 mod postprocess;
+mod configuration;
 
 fn main() -> Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
+    let configuration = configuration::load_configuration();
 
     // --- parse CLI
     let dir = env::args()
@@ -46,15 +48,16 @@ fn main() -> Result<()> {
     // --- processing
     let background_start_result =  pool.install(|| -> Result<JoinHandle<Result<()>>> {
         let background_join_handle = thread::spawn(move || {
+        let pipeline = pipeline::Pipeline::new(configuration);
         jsons.par_iter().try_for_each(|path| -> Result<()> {
             let file_name = path.file_stem().unwrap().to_string_lossy().to_string();
             let image = load_labelme(&path)?;
-            if let Err(e) = pipeline::run(image, file_name, tx.clone()) {
+            let task = PipelineTask{image, prefix: file_name};
+            if let Err(e) = pipeline.run(task, tx.clone()) {
                 error!("Pipeline Failed for {}: {:?}", path.display(), e);
             }
             Ok(())
         })});
-        //background.join().map_err(|_| anyhow!("Background thread failed"))??;
         Ok(background_join_handle)
     });
 
@@ -92,7 +95,7 @@ fn list_jsons(dir: PathBuf) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn save_to_disk(rx: Receiver<SaveFileTask>) -> Result<()> {
+fn save_to_disk(rx: Receiver<PipelineTaskResult>) -> Result<()> {
     let out_dir = Path::new("out");
     fs::create_dir_all(out_dir)?;
     while let Ok(task) = rx.recv() {
@@ -119,6 +122,7 @@ mod tests {
     use crate::lablelme_loader::load_labelme;
     use anyhow::Result;
     use std::path::PathBuf;
+    use crate::pipeline::PipelineTask;
 
     #[test]
     #[ignore]
@@ -127,7 +131,9 @@ mod tests {
         let image = load_labelme(&path_buf)?;
         let (tx, rx) = bounded(1);
         rayon::spawn(|| {
-            if let Err(e) = pipeline::run(image, "test".to_string(), tx) {
+            let pipeline = pipeline::Pipeline::new(configuration::load_configuration());
+            let task = PipelineTask{image, prefix: "test".to_string()};
+            if let Err(e) = pipeline.run(task, tx) {
                 error!("Error {:?}", e);
             }
         });

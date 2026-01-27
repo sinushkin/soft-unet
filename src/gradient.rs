@@ -1,16 +1,16 @@
-use crate::types::{ContourGroup, INNER_LABEL, RectSize, su_points_to_cv_points, ContourCrop};
+use crate::types::{ContourGroup, RectSize, su_points_to_cv_points, ContourCrop};
 use anyhow::Result;
 use opencv::core::{CV_8U, CV_8UC1, NORM_MINMAX, Point, Scalar, Vector, bitwise_and, bitwise_not, no_array, normalize, bitwise_or};
 use opencv::prelude::{Mat, MatExprTraitConst};
 use opencv::{imgcodecs, imgproc};
 use std::path::Path;
 use log::Level;
+use crate::configuration::INNER_LABEL;
 
-
-pub fn build_gradient_mask(contour_crop: &ContourCrop) -> Result<Mat> {
+pub fn build_gradient_mask(contour_crop: &ContourCrop, gradient_alpha: u8) -> Result<Mat> {
     let (outer_mask, inner_mask) =
         build_outer_inner_masks(&contour_crop.contour_group, &contour_crop.size)?;
-    let result = build_gradient(&outer_mask, &inner_mask)?;
+    let result = build_gradient(&outer_mask, &inner_mask, gradient_alpha)?;
     Ok(result)
 }
 
@@ -49,7 +49,7 @@ fn build_outer_inner_masks(contour: &ContourGroup, size: &RectSize) -> Result<(M
     Ok((outer_mask, inner_mask))
 }
 
-fn build_gradient(outer_mask: &Mat, inner_mask: &Mat) -> Result<Mat> {
+fn build_gradient(outer_mask: &Mat, inner_mask: &Mat, gradient_alpha: u8) -> Result<Mat> {
     let out_dir = Path::new("out");
     // 255 → 0
     // 0 → 255
@@ -82,7 +82,7 @@ fn build_gradient(outer_mask: &Mat, inner_mask: &Mat) -> Result<Mat> {
     normalize(
         &inv_inner_dist,
         &mut dist_normalized,
-        35.0,   //TODO adjust using config or slider
+        gradient_alpha as f64,
         255.0,
         NORM_MINMAX,
         CV_8U,
@@ -159,18 +159,8 @@ mod tests {
             &Vector::new(),
         )?;
 
-        build_gradient(&outer_mask, &inner_mask)?;
-        /*
-        let mut gaussian = Mat::default();
-        imgproc::gaussian_blur(
-            &result,
-            &mut gaussian,
-            core::Size::new(15, 15),
-            0.0,
-            0.0,
-            core::BORDER_DEFAULT,
-        )?;
-        */
+        build_gradient(&outer_mask, &inner_mask, 35)?;
+
         Ok(())
     }
 }
