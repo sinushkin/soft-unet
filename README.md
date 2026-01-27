@@ -52,7 +52,7 @@ This method is especially effective for transparent materials, soft boundaries, 
 
   ```bash
   sudo apt update
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
   source "$HOME/.cargo/env"
   sudo apt install -y libopencv-dev pkg-config clang git
   git clone https://github.com/sinushkin/soft-unet

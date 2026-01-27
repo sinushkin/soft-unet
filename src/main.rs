@@ -21,6 +21,8 @@ mod split;
 mod types;
 mod postprocess;
 mod configuration;
+#[allow(unused)]
+mod augmentation;
 
 fn main() -> Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();

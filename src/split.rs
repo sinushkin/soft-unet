@@ -1,4 +1,4 @@
-use crate::types::{ContourCrop, RectSize, SuPoint, SuPoint2F};
+use crate::types::{ContourCrop, RectSize};
 use anyhow::{Result, bail};
 
 /// Стратегия деления контуров
@@ -23,10 +23,10 @@ pub fn split_contours(
         }
 
         // center in crop-local coords
-        let local_center = contour_center(&outer.points);
+        let local_center = crop.contour_group.outer_center;
 
         // convert to original image coords
-        let global_center_x = local_center.x + crop.offset.x;
+        let global_center_x = local_center.x as usize + crop.offset.x;
 
         if global_center_x < mid_x {
             left.push(crop);
@@ -36,20 +36,4 @@ pub fn split_contours(
     }
 
     Ok(vec![left, right])
-}
-
-fn contour_center(points: &[SuPoint2F]) -> SuPoint {
-    let mut sx = 0;
-    let mut sy = 0;
-
-    for p in points {
-        sx += p.x as usize;
-        sy += p.y as usize;
-    }
-
-    let n = points.len();
-    SuPoint {
-        x: sx / n,
-        y: sy / n,
-    }
 }

@@ -1,7 +1,7 @@
 use crate::gradient::build_gradient_mask;
-use crate::preprocess::preprocess_image;
+use crate::preprocess::{parse_label, preprocess_image};
 use crate::split::split_contours;
-use crate::types::{su_points_to_cv_points, Contour, ContourCrop, Image, RectSize};
+use crate::types::{su_points_to_cv_points, Contour, ContourCrop, Image, RawImage, RectSize};
 use anyhow::{anyhow, bail, Result};
 use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use crate::configuration::Configuration;
 use itertools::Itertools;
 
 pub struct PipelineTask {
-    pub image: Image,
+    pub image: RawImage,
     pub prefix: String,
 }
 
@@ -33,15 +33,27 @@ impl Pipeline {
     }
 
     pub fn run(&self, task: PipelineTask, tx: Sender<PipelineTaskResult>) -> Result<()> {
-        let PipelineTask { mut image, prefix } = task;
-        preprocess_image(&mut image)?;
-        let Image {
-            original,
-            size,
-            contour_crops,
-        } = image;
+        let PipelineTask { image, prefix } = task;
+        let augmentations = preprocess_image(image)?;
+        self.process_image(augmentations.original, prefix.clone(), tx.clone())?;
+        augmentations.augmentation_list
+            .into_iter()
+            .enumerate()
+            .try_for_each(|(aug_index, augmentation)| -> Result<()> {
+                self.process_image(augmentation, format!("{}-aug-{}", &prefix, aug_index).to_string(), tx.clone())?;
+                Ok(())
+        })?;
+        Ok(())
+    }
 
+    fn process_image(&self, image: Image, prefix: String, tx: Sender<PipelineTaskResult>) -> Result<()> {
+        let Image {
+            mat,
+            size,
+            contour_crops
+        } = image;
         let mut gradients_map: HashMap<usize, Mat> = HashMap::new();
+
         contour_crops
             .iter()
             .try_for_each(|contour_crop| -> Result<()> {
@@ -67,7 +79,7 @@ impl Pipeline {
         tx.send(PipelineTaskResult {
             prefix,
             tensor_idx: None,
-            mat: original,
+            mat,
         })?;
         Ok(())
     }
@@ -109,19 +121,27 @@ impl Pipeline {
 
     /// Fill special pixels (like films, bags) with preconfigurable values
     fn fill_specials(&self, mat: &mut Mat, inners: &Vec<Contour>) -> Result<()> {
-        inners.iter()
-            .filter(|inner| self.configuration
-                .label_map.contains_key(&inner.label_prefix))
-            .into_group_map_by(|inner| inner.label_prefix.as_str())
+        inners
+            .iter()
+            .map(|inner| -> Result<(String, &Contour)> {
+                let (_, label_prefix, _) = parse_label(inner.label.as_str())?;
+                Ok((label_prefix, inner))
+            })
+            .collect::<Result<Vec<_>>>()?      // <-- handle Result
+            .into_iter()
+            .filter(|(label_prefix, _)| {
+                self.configuration.label_map.contains_key(label_prefix)
+            })
+            .into_group_map_by(|(label_prefix, _)| label_prefix.clone())
             .into_iter()
             .try_for_each(|(label_prefix, inners)| -> Result<()> {
                 let mut polys = Vector::<Vector<Point>>::new();
                 for inner in inners {
-                    polys.push(su_points_to_cv_points(&inner.points));
+                    polys.push(su_points_to_cv_points(&inner.1.points));
                 }
 
                 let intensity = *self.configuration.label_map
-                    .get(label_prefix)
+                    .get(&label_prefix)
                     .ok_or_else(|| anyhow!("Missing label value for {}", label_prefix))?;
                 imgproc::fill_poly(
                     mat,

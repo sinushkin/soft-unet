@@ -132,7 +132,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use env_logger::Builder;
     use log::LevelFilter;
-
+    use crate::preprocess::convert;
 
     #[test]
     #[ignore]
@@ -145,6 +145,7 @@ mod tests {
 
         let json_path = PathBuf::from("test-resources/IMG_20260123_232343.json");
         let image = load_labelme(&json_path)?;
+        let image = convert(image, false)?;
         let some_group_crop = image.contour_crops.get(0).unwrap();
         let (outer_mask, inner_mask) =
             build_outer_inner_masks(&some_group_crop.contour_group, &some_group_crop.size)?;
