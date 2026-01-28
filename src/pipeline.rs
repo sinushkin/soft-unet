@@ -7,7 +7,7 @@ use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
 use std::collections::HashMap;
 use std::time::Instant;
 use crossbeam_channel::Sender;
-use opencv::core::{bitwise_not, no_array, Point, Rect, Scalar, Vector, CV_8UC1};
+use opencv::core::{Point, Rect, Scalar, Vector, CV_8UC1};
 use opencv::imgproc;
 use crate::configuration::Configuration;
 use itertools::Itertools;

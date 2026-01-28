@@ -66,3 +66,12 @@ This method is especially effective for transparent materials, soft boundaries, 
 Литература ;-)
 - https://www.youtube.com/watch?v=oxWfLTQoC5A
 - https://www.youtube.com/watch?v=_3S3eTvBEns
+
+## Perf (Debian)
+```shell
+sudo apt install linux-perf
+sudo sysctl -w kernel.perf_event_paranoid=0
+cargo install flamegraph
+cargo flamegraph --release -- /home/user/weights/dataset/originals
+perf stat ./target/release/soft-unet /home/user/weights/dataset/originals
+```

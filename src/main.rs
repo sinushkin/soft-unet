@@ -38,7 +38,7 @@ fn main() -> Result<()> {
     let jsons = list_jsons(dir)?;
 
     // --- rayon pool
-    let cpu = 1.max(num_cpus::get()-1);
+    let cpu = num_cpus::get().clamp(1, 8);
     info!("Using {} cpu", cpu);
     let pool = ThreadPoolBuilder::new()
         .num_threads(cpu)

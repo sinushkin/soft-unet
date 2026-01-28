@@ -16,3 +16,6 @@ num_cpus = "1.17.0"
 crossbeam-channel = "0.5.15"
 itertools = "0.14.0"
 rand = "0.10.0-rc.8"
+
+[profile.release]
+debug = true
