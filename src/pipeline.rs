@@ -7,7 +7,7 @@ use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
 use std::collections::HashMap;
 use std::time::Instant;
 use crossbeam_channel::Sender;
-use opencv::core::{Point, Rect, Scalar, Vector, CV_8UC1};
+use opencv::core::{bitwise_not, no_array, Point, Rect, Scalar, Vector, CV_8UC1};
 use opencv::imgproc;
 use crate::configuration::Configuration;
 use itertools::Itertools;
@@ -53,6 +53,10 @@ impl Pipeline {
         Ok(())
     }
 
+    /// Построить маски для каждой группы контуров.
+    /// построить тензор бекграунда
+    /// построить тензоры сгруппированных масок
+    /// Все отправить в tx
     fn process_image(&self, image: Image, prefix: String, tx: Sender<PipelineTaskResult>) -> Result<()> {
         let Image {
             mat,
@@ -70,6 +74,13 @@ impl Pipeline {
                 Ok(())
             })?;
 
+        let background_tensor = Self::build_background_tensor(size, &contour_crops, &gradients_map)?;
+        tx.send(PipelineTaskResult {
+            prefix: prefix.clone(),
+            tensor_idx: Some(0),
+            mat: background_tensor,
+        })?;
+
         let tensors = split_contours(contour_crops, size)?;
         tensors
             .iter()
@@ -78,7 +89,7 @@ impl Pipeline {
                 let tensor = Self::build_tensor(size, crops, &gradients_map)?;
                 tx.send(PipelineTaskResult {
                     prefix: prefix.clone(),
-                    tensor_idx: Some(idx),
+                    tensor_idx: Some(idx+1),
                     mat: tensor,
                 })?;
                 Ok(())
@@ -89,6 +100,23 @@ impl Pipeline {
             mat,
         })?;
         Ok(())
+    }
+
+    fn build_background_tensor(size: RectSize, crops: &Vec<ContourCrop>, gradients_map: &HashMap<usize, Mat>) -> Result<Mat> {
+        let foreground = Self::build_tensor(size, crops, gradients_map)?;
+
+        let mut background = Mat::default();
+        // if foreground == 0 → 255 (background)
+        // else → 0
+        imgproc::threshold(
+            &foreground,
+            &mut background,
+            0.0,
+            255.0,
+            imgproc::THRESH_BINARY_INV,
+        )?;
+
+        Ok(background)
     }
 
     fn build_tensor(size: RectSize, crops: &Vec<ContourCrop>, gradients_map: &HashMap<usize, Mat>) -> Result<Mat> {
