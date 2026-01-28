@@ -4,7 +4,8 @@ use crate::types::{Augmentations, Contour, ContourCrop, ContourGroup, Image, Raw
 use anyhow::{anyhow, bail, Result};
 use log::warn;
 use rand::RngExt;
-use crate::augmentation::AffineTransformBuilder;
+use crate::augmentation_affine::AffineTransformBuilder;
+use crate::augmentation_colour::AugmentColour;
 use crate::configuration::OUTER_LABEL;
 
 pub fn preprocess_image(image: RawImage) -> Result<Augmentations> {
@@ -22,43 +23,75 @@ pub fn preprocess_image(image: RawImage) -> Result<Augmentations> {
 }
 
 fn augment(image: &RawImage) -> Result<RawImage> {
-
     let mut rng = rand::rng();
-    let center = SuPoint2F { x: image.size.width as f32 / 2.0, y: image.size.height as f32 / 2.0 };
-    //pick up some contour center and rotate around it
-    let rotation_point = if image.contours.is_empty() {
-        center.into()
-    }else {
-        // ---- pick random contour group ----
-        let idx = rng.random_range(0..image.contours.len());
-        image.contours[idx].calculate_center()
+    let mut rand_bool = || -> bool { rng.random_bool(0.5) };
+
+    let mut augment = AugmentColour::new();
+    let mut mat = image.mat.clone();
+
+    if rand_bool() {
+        augment.salt_and_pepper(&mut mat, 0.1)?;
+    }
+    if rand_bool() {
+        augment.gaussian(&mut mat, 0.1)?;
+    }
+    if rand_bool() {
+        augment.contrast(&mut mat, 0.1)?;
+    }
+    if rand_bool() {
+        augment.brightness(&mut mat, 0.3)?;
+    }
+    if rand_bool() {
+        augment.saturation(&mut mat, 0.1)?;
+    }
+    if rand_bool() {
+        augment.hue(&mut mat, 0.1)?;
+    }
+    if rand_bool() {
+        augment.color_jitter(&mut mat, 0.2)?;
+    }
+    if rand_bool() {
+        augment.dropout(&mut mat, 0.1)?;
+    }
+
+    let affine_mat = {
+        let center = SuPoint2F { x: image.size.width as f32 / 2.0, y: image.size.height as f32 / 2.0 };
+        //pick up some contour center and rotate around it
+        let rotation_point = if image.contours.is_empty() {
+            center.into()
+        } else {
+            // ---- pick random contour group ----
+            let idx = rng.random_range(0..image.contours.len());
+            image.contours[idx].calculate_center()
+        };
+
+        // ---- random params (example ranges) ----
+        let angle = rng.random_range(-20.0..20.0);     // degrees
+        let shift_x = rng.random_range(-30.0..30.0);
+        let shift_y = rng.random_range(-30.0..30.0);
+        let shear_x = rng.random_range(-0.1..0.1);
+        let shear_y = rng.random_range(-0.1..0.1);
+        let scale = rng.random_range(0.9..1.1);
+        let flip = rng.random_bool(0.5);
+
+        // ---- build affine ----
+        let mut builder = AffineTransformBuilder::new()
+            .rotate(angle, rotation_point);   // rotation around contour center
+        if flip {
+            builder = builder.flip_horizontal(center.x);
+        }
+        builder = builder.shift_x(shift_x)
+            .shift_y(shift_y)
+            .shear_x(shear_x)
+            .shear_y(shear_y)
+            .scale_uniform(scale, center);
+
+        builder.build()
     };
 
-    // ---- random params (example ranges) ----
-    let angle = rng.random_range(-20.0..20.0);     // degrees
-    let shift_x = rng.random_range(-30.0..30.0);
-    let shift_y = rng.random_range(-30.0..30.0);
-    let shear_x = rng.random_range(-0.1..0.1);
-    let shear_y = rng.random_range(-0.1..0.1);
-    let scale = rng.random_range(0.9..1.1);
-    let flip = rng.random_bool(0.5);
-
-    // ---- build affine ----
-    let mut builder = AffineTransformBuilder::new()
-        .rotate(angle, rotation_point);   // rotation around contour center
-    if flip {
-        builder = builder.flip_horizontal(center.x);
-    }
-    builder = builder.shift_x(shift_x)
-        .shift_y(shift_y)
-        .shear_x(shear_x)
-        .shear_y(shear_y)
-        .scale_uniform(scale, center);
-
-    let affine = builder.build();
-    let mat = affine.apply_mat(&image.mat)?;
+    let mat = affine_mat.apply_mat(&mat)?;
     let contours : Vec<Contour>= image.contours.iter()
-        .map(|c| affine.apply_contour(c))
+        .map(|c| affine_mat.apply_contour(c))
         .collect();
     Ok(RawImage{
         mat,

@@ -5,11 +5,13 @@ use crate::types::{su_points_to_cv_points, Contour, ContourCrop, Image, RawImage
 use anyhow::{anyhow, bail, Result};
 use opencv::prelude::{Mat, MatExprTraitConst, MatTraitConst};
 use std::collections::HashMap;
+use std::time::Instant;
 use crossbeam_channel::Sender;
 use opencv::core::{Point, Rect, Scalar, Vector, CV_8UC1};
 use opencv::imgproc;
 use crate::configuration::Configuration;
 use itertools::Itertools;
+use log::info;
 
 pub struct PipelineTask {
     pub image: RawImage,
@@ -34,7 +36,10 @@ impl Pipeline {
 
     pub fn run(&self, task: PipelineTask, tx: Sender<PipelineTaskResult>) -> Result<()> {
         let PipelineTask { image, prefix } = task;
+        info!("Processing {}", prefix);
+        let start = Instant::now();
         let augmentations = preprocess_image(image)?;
+        let augmentation_time = start.elapsed();
         self.process_image(augmentations.original, prefix.clone(), tx.clone())?;
         augmentations.augmentation_list
             .into_iter()
@@ -43,6 +48,8 @@ impl Pipeline {
                 self.process_image(augmentation, format!("{}-aug-{}", &prefix, aug_index).to_string(), tx.clone())?;
                 Ok(())
         })?;
+        let total_time = start.elapsed();
+        info!("{}: augmentation time: {:?}, total time: {:?}", prefix, augmentation_time, total_time);
         Ok(())
     }
 

@@ -22,7 +22,8 @@ mod types;
 mod postprocess;
 mod configuration;
 #[allow(unused)]
-mod augmentation;
+mod augmentation_affine;
+mod augmentation_colour;
 
 fn main() -> Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
