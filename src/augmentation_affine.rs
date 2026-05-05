@@ -53,8 +53,11 @@ impl AffineTransform {
     }
 
     pub fn mutate_point(&self, p: &mut SuPoint2F) {
-        p.x = self.a * p.x + self.b * p.y + self.tx;
-        p.y = self.c * p.x + self.d * p.y + self.ty;
+        let x = p.x;
+        let y = p.y;
+
+        p.x = self.a * x + self.b * y + self.tx;
+        p.y = self.c * x + self.d * y + self.ty;
     }
 
     pub fn mutate_points(&self, points: &mut [SuPoint2F]) {
